@@ -425,6 +425,8 @@ class NPCWorldRPG(BasePlugin):
             self.add_journal(d,"Завершено задание: "+q["name"])
             self.save_game(d)
             extra="\n".join(levels)
+            if q["id"]=="q11":
+                return "Задание завершено: %s\n+%d XP · +%d золота\n\nПеред последним боем реши судьбу Эльдрагора: .rpg choose 1 — запечатать Пустоту, .rpg choose 2 — занять трон." % (q["name"],q["xp"],q["gold"])
             if q["id"]=="q12":
                 return "Задание завершено: %s\n+%d XP · +%d золота\n\nКампания окончена. .rpg ending" % (q["name"],q["xp"],q["gold"])
             return "Задание завершено: %s\n+%d XP · +%d золота\n%s\nСледующая глава открыта. .rpg quest" % (q["name"],q["xp"],q["gold"],extra)
