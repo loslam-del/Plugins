@@ -1,0 +1,35 @@
+/*
+ * Local Repeat Test — AyuGram plugin template
+ *
+ * Safe test utility: creates repeated text only in a local preview.
+ * It does NOT send Telegram messages or interact with chats.
+ *
+ * Configure TEST_COUNT and TEST_TEXT below, then inspect the preview.
+ */
+
+const TEST_COUNT = 5;
+const TEST_TEXT = "AyuGram plugin test";
+
+let preview = [];
+
+function buildPreview() {
+  const count = Math.max(1, Math.min(20, Number(TEST_COUNT) || 1));
+  preview = Array.from({ length: count }, (_, i) => ({
+    number: i + 1,
+    text: String(TEST_TEXT)
+  }));
+  return preview;
+}
+
+function stopPreview() {
+  preview = [];
+  return preview;
+}
+
+export default {
+  name: "Local Repeat Test",
+  description: "Creates a capped local preview of repeated text; does not send messages.",
+  version: "1.0.0",
+  buildPreview,
+  stopPreview
+};
