@@ -1,60 +1,60 @@
 # -*- coding: utf-8 -*-
-"""Safe local parser for the !Spaw command.
-
-The plugin recognizes the command, records a preview in the plugin log,
-and cancels it before it can be sent. It never sends repeated messages.
-"""
-
 import re
+import time
+import threading
 
 from base_plugin import BasePlugin, HookResult, HookStrategy
+from client_utils import send_message
 
-__id__ = "spaw_preview"
-__name__ = "Spaw Preview"
-__description__ = "Recognizes !Spaw count text, logs a preview, and cancels the command."
+__id__ = "spaw_repeat"
+__name__ = "Spaw"
+__description__ = "!spaw N text - sends text N times"
 __author__ = "loslam-del"
-__version__ = "1.2.1"
+__version__ = "2.0.0"
 __app_version__ = ">=12.5.1"
 __category__ = ["tools"]
 
-COMMAND_RE = re.compile(r"^!spaw(?:\s+(\d{1,3})\s+(.+))?$", re.IGNORECASE)
-MAX_PREVIEW_COUNT = 100
+COMMAND_RE = re.compile(r"^!spaw\s+(\d{1,3})\s+(.+)$", re.IGNORECASE | re.DOTALL)
+MAX_COUNT = 20     # защита от бана за флуд
+DELAY = 0.7        # пауза между сообщениями, сек
 
 
-class SpawPreviewPlugin(BasePlugin):
+class SpawPlugin(BasePlugin):
     def on_plugin_load(self):
         self.add_on_send_message_hook()
-        self.logger.info("Spaw Preview loaded")
+        self.logger.info("Spaw loaded")
 
-    def on_send_message_hook(self, account: int, params) -> HookResult:
+    def on_send_message_hook(self, account, params):
         message = getattr(params, "message", None)
         if not isinstance(message, str):
             return HookResult()
 
-        raw_text = message.strip()
-
-        # Ignore ordinary words such as "!spawner"; handle only the command.
-        if not re.match(r"^!spaw(?:\s|$)", raw_text, re.IGNORECASE):
+        match = COMMAND_RE.match(message.strip())
+        if not match:
             return HookResult()
 
-        match = COMMAND_RE.fullmatch(raw_text)
-        if not match or not match.group(1) or not match.group(2).strip():
-            self.logger.info("Spaw Preview: invalid command syntax; canceled")
-            return HookResult(strategy=HookStrategy.CANCEL)
-
-        requested_count = int(match.group(1))
-        if requested_count < 1:
-            self.logger.info("Spaw Preview: count must be at least 1; canceled")
-            return HookResult(strategy=HookStrategy.CANCEL)
-
-        preview_count = min(requested_count, MAX_PREVIEW_COUNT)
+        count = min(int(match.group(1)), MAX_COUNT)
         body = match.group(2).strip()
+        if count < 1 or not body or body.lower().startswith("!spaw"):
+            return HookResult()
 
-        self.logger.info(
-            f"Spaw Preview only: requested_count={requested_count}, "
-            f"preview_count={preview_count}, text={body[:120]!r}"
-        )
-        return HookResult(strategy=HookStrategy.CANCEL)
+        peer = getattr(params, "peer", None)
+
+        def worker():
+            for _ in range(count - 1):
+                time.sleep(DELAY)
+                try:
+                    send_message({"peer": peer, "message": body})
+                except Exception as e:
+                    self.logger.error(f"Spaw send error: {e}")
+                    break
+
+        # первое сообщение: подменяем текст команды на сам текст
+        params.message = body
+        if count > 1:
+            threading.Thread(target=worker, daemon=True).start()
+
+        return HookResult(strategy=HookStrategy.MODIFY, params=params)
 
     def on_plugin_unload(self):
-        self.logger.info("Spaw Preview unloaded")
+        self.logger.info("Spaw unloaded")
