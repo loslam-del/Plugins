@@ -94,7 +94,7 @@ def new_save():
         "region":0,"quest_index":0,"active":None,"done":[],"progress":0,
         "inventory":["Плащ странника","Сухой паёк","potion"],
         "equipment":{"weapon":None,"armor":None,"trinket":None},
-        "flags":{"spared_spirits":False,"trusted_elder":False,"final_choice":None},
+        "flags":{"spared_spirits":None,"trusted_elder":None,"final_choice":None},
         "journal":["Ты очнулся на дороге в Пепельных землях."],
         "wins":0,"explores":0,"battle":None,"ending":None,
     }
@@ -385,7 +385,7 @@ class NPCWorldRPG(BasePlugin):
             if not d.get("battle"):
                 return "Ты не в бою."
             damage=max(1,d["battle"]["attack"]//3-self.stat(d,"will")//3)
-            d["hp"]=min(d["max_hp"],d["hp"]-damage+max(0,self.stat(d,"will")//2))
+            d["hp"]=max(1,min(d["max_hp"],d["hp"]-damage+max(0,self.stat(d,"will")//2)))
             d["stamina"]=min(d["max_stamina"],d["stamina"]+2)
             self.save_game(d)
             return "Ты принимаешь защитную стойку. Восстановлено 2 выносливости. HP: %d/%d. Теперь .rpg attack" % (d["hp"],d["max_hp"])
@@ -433,7 +433,7 @@ class NPCWorldRPG(BasePlugin):
             if len(parts)<3 or parts[2] not in ("1","2"):
                 return "Выбери .rpg choose 1 или .rpg choose 2"
             choice=parts[2]
-            if "q03" in d["done"] and "spared_spirits" not in d["flags"]:
+            if "q03" in d["done"] and d["flags"].get("spared_spirits") is None:
                 d["flags"]["spared_spirits"]=choice=="1"
                 if choice=="1":
                     d["stats"]["will"]+=1
@@ -441,9 +441,12 @@ class NPCWorldRPG(BasePlugin):
                 else:
                     d["stats"]["power"]+=1
                     outcome="Ты забираешь силу алтаря: +1 к силе. Лес запоминает твоё решение."
-            elif "q06" in d["done"] and "trusted_elder" not in d["flags"]:
+            elif "q06" in d["done"] and d["flags"].get("trusted_elder") is None:
                 d["flags"]["trusted_elder"]=choice=="1"
                 outcome="Старик идёт с тобой." if choice=="1" else "Ты уходишь один. Старик остаётся у святилища."
+            elif "q11" in d["done"] and d["flags"].get("final_choice") is None:
+                d["flags"]["final_choice"]=choice
+                outcome="Ты выбираешь запечатать Пустоту." if choice=="1" else "Ты решаешь занять трон Эльдрагора."
             else:
                 return "Сейчас нет доступного сюжетного выбора. Продолжай .rpg quest"
             self.add_journal(d,"Сюжетный выбор: "+choice)
