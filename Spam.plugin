@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
-"""Safe local preview for the !Spaw command.
+"""Safe local parser for the !Spaw command.
 
-This plugin only recognizes the command and cancels it before sending.
-It never sends repeated messages.
+The plugin recognizes the command, records a preview in the plugin log,
+and cancels it before it can be sent. It never sends repeated messages.
 """
 
 import re
@@ -11,10 +11,10 @@ from base_plugin import BasePlugin, HookResult, HookStrategy
 
 __id__ = "spaw_preview"
 __name__ = "Spaw Preview"
-__description__ = "Recognizes !Spaw count text and logs a local preview; does not send messages."
+__description__ = "Recognizes !Spaw count text, logs a preview, and cancels the command."
 __author__ = "loslam-del"
-__version__ = "1.2.0"
-__min_version__ = "12.5.1"
+__version__ = "1.2.1"
+__app_version__ = ">=12.5.1"
 __category__ = ["tools"]
 
 COMMAND_RE = re.compile(r"^!spaw(?:\s+(\d{1,3})\s+(.+))?$", re.IGNORECASE)
@@ -24,7 +24,7 @@ MAX_PREVIEW_COUNT = 100
 class SpawPreviewPlugin(BasePlugin):
     def on_plugin_load(self):
         self.add_on_send_message_hook()
-        self.logger.info("Spaw Preview loaded; outgoing command preview hook registered")
+        self.logger.info("Spaw Preview loaded")
 
     def on_send_message_hook(self, account: int, params) -> HookResult:
         message = getattr(params, "message", None)
@@ -32,23 +32,27 @@ class SpawPreviewPlugin(BasePlugin):
             return HookResult()
 
         raw_text = message.strip()
-        if not raw_text.lower().startswith("!spaw"):
+
+        # Ignore ordinary words such as "!spawner"; handle only the command.
+        if not re.match(r"^!spaw(?:\s|$)", raw_text, re.IGNORECASE):
             return HookResult()
 
         match = COMMAND_RE.fullmatch(raw_text)
         if not match or not match.group(1) or not match.group(2).strip():
-            self.logger.info("Spaw Preview: invalid command syntax; command canceled")
+            self.logger.info("Spaw Preview: invalid command syntax; canceled")
             return HookResult(strategy=HookStrategy.CANCEL)
 
         requested_count = int(match.group(1))
-        preview_count = max(1, min(requested_count, MAX_PREVIEW_COUNT))
+        if requested_count < 1:
+            self.logger.info("Spaw Preview: count must be at least 1; canceled")
+            return HookResult(strategy=HookStrategy.CANCEL)
+
+        preview_count = min(requested_count, MAX_PREVIEW_COUNT)
         body = match.group(2).strip()
 
         self.logger.info(
-            "Spaw Preview only: requested_count=%s, preview_count=%s, text=%r",
-            requested_count,
-            preview_count,
-            body[:120],
+            f"Spaw Preview only: requested_count={requested_count}, "
+            f"preview_count={preview_count}, text={body[:120]!r}"
         )
         return HookResult(strategy=HookStrategy.CANCEL)
 
