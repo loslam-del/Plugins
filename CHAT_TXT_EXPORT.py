@@ -25,7 +25,7 @@ __id__ = "chat_txt_export"
 __name__ = "Chat TXT Export"
 __description__ = "Экспорт выбранной переписки в TXT и отправка выбранному контакту."
 __author__ = "loslam-del"
-__version__ = "1.0.1"
+__version__ = "1.0.2"
 __icon__ = "exteraPlugins/1"
 __app_version__ = ">=12.5.1"
 __sdk_version__ = ">=1.4.4.3"
@@ -263,45 +263,53 @@ class ChatTxtExportPlugin(BasePlugin):
 
     def _on_history_page(self, peer, dialog_id, account, response, error):
         if error:
-            self.logger.warning("History request error: %s", getattr(error, "text", error))
-            self._finish_export()
-            BulletinHelper.show_error("Telegram не смог загрузить часть истории")
+            error_text = str(getattr(error, "text", error))
+            self.logger.warning("History request error: %s", error_text)
+            self._exporting = False
+            BulletinHelper.show_error("Telegram не смог загрузить историю: " + error_text[:180])
             return
         try:
-            messages = list(getattr(response, "messages", []) or [])
+            if response is None:
+                raise RuntimeError("Telegram вернул пустой ответ")
+            raw_messages = getattr(response, "messages", None)
+            if raw_messages is None:
+                raise RuntimeError("В ответе Telegram нет списка messages: " + type(response).__name__)
+            messages = list(raw_messages)
             if not messages:
                 self._finish_export()
                 return
 
             oldest_id = None
-            added = 0
             for message in messages:
-                message_id = int(getattr(message, "id", 0) or 0)
-                if message_id <= 0:
-                    continue
-                oldest_id = message_id if oldest_id is None else min(oldest_id, message_id)
-                if message_id in self._seen_ids:
-                    continue
-                self._seen_ids.add(message_id)
-                text = str(getattr(message, "message", "") or "").strip()
-                if not text:
-                    media = getattr(message, "media", None)
-                    if media is not None:
-                        text = "[медиафайл или вложение — не включено в экспорт]"
-                    else:
+                try:
+                    message_id = int(getattr(message, "id", 0) or 0)
+                    if message_id <= 0:
+                        continue
+                    oldest_id = message_id if oldest_id is None else min(oldest_id, message_id)
+                    if message_id in self._seen_ids:
+                        continue
+                    self._seen_ids.add(message_id)
+
+                    message_text = str(getattr(message, "message", "") or "").strip()
+                    if not message_text:
+                        media = getattr(message, "media", None)
                         action = getattr(message, "action", None)
-                        if action is not None:
-                            text = "[событие чата]"
+                        if media is not None:
+                            message_text = "[медиафайл или вложение — не включено в экспорт]"
+                        elif action is not None:
+                            message_text = "[событие чата]"
                         else:
                             continue
-                date_value = int(getattr(message, "date", 0) or 0)
-                try:
-                    date_text = datetime.fromtimestamp(date_value).strftime("%Y-%m-%d %H:%M:%S")
-                except Exception:
-                    date_text = "неизвестная дата"
-                sender = self._sender_name(message, account)
-                self._collected.append((date_value, message_id, sender, text))
-                added += 1
+
+                    date_value = int(getattr(message, "date", 0) or 0)
+                    sender = self._sender_name(message, account)
+                    self._collected.append((date_value, message_id, sender, message_text))
+                except Exception as message_error:
+                    self.logger.warning(
+                        "Skipping message while exporting chat %s: %s",
+                        dialog_id, str(message_error)
+                    )
+                    continue
 
             if len(messages) < PAGE_SIZE:
                 self._finish_export()
@@ -309,18 +317,17 @@ class ChatTxtExportPlugin(BasePlugin):
             if oldest_id is None or oldest_id <= 0:
                 self._finish_export()
                 return
-            # Prevent a repeated cursor from causing an endless pagination loop.
             if oldest_id == self._last_offset_id:
                 self._finish_export()
-                BulletinHelper.show_info("Остановил экспорт: Telegram повторил страницу истории")
+                BulletinHelper.show_info("Экспорт остановлен: Telegram повторил страницу истории")
                 return
             self._last_offset_id = oldest_id
-            # offset_id is exclusive: continue toward the oldest available message.
             self._request_page(peer, dialog_id, account, oldest_id)
-        except Exception:
+        except Exception as e:
             self.logger.exception("Failed to parse history response")
             self._exporting = False
-            BulletinHelper.show_error("Ошибка при обработке истории чата")
+            error_text = str(e) or type(e).__name__
+            BulletinHelper.show_error("Ошибка истории (%s): %s" % (type(e).__name__, error_text[:140]))
 
     def _finish_export(self):
         try:
