@@ -1,7 +1,7 @@
 # CHAT TXT EXPORT — export one selected Telegram chat to a .txt file
 # Flow:
 # 1) In the source chat, open a message context menu -> "Экспортировать чат в TXT".
-# 2) The plugin exports up to the latest 1000 text messages locally.
+# 2) The plugin paginates through the full history available to this account.
 # 3) Open the destination chat and send .txtsend; confirm the recipient before upload.
 # Media files are not downloaded or embedded. Only messages accessible to this account are exported.
 
