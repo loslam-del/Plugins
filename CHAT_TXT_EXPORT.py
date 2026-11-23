@@ -32,7 +32,7 @@ __sdk_version__ = ">=1.4.4.3"
 __category__ = ["chats", "tools"]
 
 PAGE_SIZE = 100
-MAX_MESSAGES = 1000
+# No arbitrary message-count cap: paginate until Telegram returns no older messages.
 SEND_COMMAND = ".txtsend"
 
 
@@ -65,7 +65,7 @@ class ChatTxtExportPlugin(BasePlugin):
                 text="Экспортировать чат в TXT",
                 on_click=self._on_export_menu,
                 icon="msg_file",
-                subtext="Сохранить до 1000 последних текстовых сообщений",
+                subtext="Сохранить всю доступную историю этого чата",
                 priority=5,
             )
         )
@@ -78,7 +78,8 @@ class ChatTxtExportPlugin(BasePlugin):
                 text="Как пользоваться",
                 subtext=(
                     "В исходном чате открой меню любого сообщения и выбери "
-                    "«Экспортировать чат в TXT». После экспорта открой чат получателя "
+                    "«Экспортировать чат в TXT». Плагин постранично загрузит всю доступную "
+                    "историю без заданного лимита сообщений. После экспорта открой чат получателя "
                     "и отправь команду .txtsend. Перед отправкой появится подтверждение. "
                     "В файл попадут до 1000 последних сообщений; фото, видео, файлы "
                     "и голосовые не скачиваются."
@@ -131,7 +132,7 @@ class ChatTxtExportPlugin(BasePlugin):
         title = self._chat_title(dialog_id, account)
         self._show_confirm(
             "Экспорт переписки",
-            "Будет создан TXT-файл с максимум 1000 последними сообщениями из «%s». "
+            "Будет создан TXT-файл со всей доступной историей чата «%s». "
             "Медиафайлы не включаются. После экспорта файл останется на устройстве. "
             "Для отправки открой чат получателя и введи .txtsend." % title,
             "Экспортировать",
@@ -199,6 +200,7 @@ class ChatTxtExportPlugin(BasePlugin):
         self._pending_title = title
         self._collected = []
         self._seen_ids = set()
+        self._last_offset_id = 0
         BulletinHelper.show_info("Начинаю экспорт: " + title)
         self._request_page(peer, dialog_id, account, 0)
 
@@ -287,13 +289,19 @@ class ChatTxtExportPlugin(BasePlugin):
                 self._collected.append((date_value, message_id, sender, text))
                 added += 1
 
-            if len(self._seen_ids) >= MAX_MESSAGES or len(messages) < PAGE_SIZE:
+            if len(messages) < PAGE_SIZE:
                 self._finish_export()
                 return
             if oldest_id is None or oldest_id <= 0:
                 self._finish_export()
                 return
-            # offset_id is exclusive: the next request continues with older messages.
+            # Prevent a repeated cursor from causing an endless pagination loop.
+            if oldest_id == self._last_offset_id:
+                self._finish_export()
+                BulletinHelper.show_info("Остановил экспорт: Telegram повторил страницу истории")
+                return
+            self._last_offset_id = oldest_id
+            # offset_id is exclusive: continue toward the oldest available message.
             self._request_page(peer, dialog_id, account, oldest_id)
         except Exception:
             self.logger.exception("Failed to parse history response")
