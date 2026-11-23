@@ -25,7 +25,7 @@ __id__ = "chat_txt_export"
 __name__ = "Chat TXT Export"
 __description__ = "Экспорт выбранной переписки в TXT и отправка выбранному контакту."
 __author__ = "loslam-del"
-__version__ = "1.0.0"
+__version__ = "1.0.1"
 __icon__ = "exteraPlugins/1"
 __app_version__ = ">=12.5.1"
 __sdk_version__ = ">=1.4.4.3"
@@ -67,6 +67,16 @@ class ChatTxtExportPlugin(BasePlugin):
                 icon="msg_file",
                 subtext="Сохранить всю доступную историю этого чата",
                 priority=5,
+            )
+        )
+        self.chat_menu_item_id = self.add_menu_item(
+            MenuItemData(
+                menu_type=MenuItemType.CHAT_ACTION_MENU,
+                text="Экспортировать чат в TXT",
+                on_click=self._on_export_menu,
+                icon="msg_file",
+                subtext="Сохранить всю доступную историю этого чата",
+                priority=10,
             )
         )
         self.logger.info("Chat TXT Export loaded")
@@ -128,7 +138,11 @@ class ChatTxtExportPlugin(BasePlugin):
             BulletinHelper.show_info("Экспорт уже выполняется")
             return
 
-        account = int(context.get("account", get_selected_account()))
+        account_value = context.get("account")
+        if account_value is None:
+            BulletinHelper.show_error("Не удалось определить аккаунт")
+            return
+        account = int(account_value)
         title = self._chat_title(dialog_id, account)
         self._show_confirm(
             "Экспорт переписки",
