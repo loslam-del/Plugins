@@ -1,13 +1,12 @@
-# CHAT HTML EXPORT — export one selected Telegram chat to a formatted .html file
+# CHAT TXT EXPORT — export one selected Telegram chat to a .txt file
 # Flow:
-# 1) In the source chat, open a message context menu -> "Экспортировать чат в HTML".
+# 1) In the source chat, open a message context menu -> "Экспортировать чат в TXT".
 # 2) The plugin paginates through the full history available to this account.
 # 3) Open the destination chat and send .txtsend; confirm the recipient before upload.
 # Media files are not downloaded or embedded. Only messages accessible to this account are exported.
 
 from datetime import datetime
 import os
-from html import escape
 
 from base_plugin import BasePlugin, HookResult, HookStrategy, MenuItemData, MenuItemType
 from client_utils import (
@@ -22,9 +21,9 @@ from ui.bulletin import BulletinHelper
 from ui.settings import Header, Text
 from org.telegram.tgnet import TLRPC
 
-__id__ = "chat_html_export"
-__name__ = "Chat HTML Export"
-__description__ = "Экспорт выбранной переписки в HTML и отправка выбранному контакту."
+__id__ = "chat_txt_export"
+__name__ = "Chat TXT Export"
+__description__ = "Экспорт выбранной переписки в TXT и отправка выбранному контакту."
 __author__ = "loslam-del"
 __version__ = "1.0.0"
 __icon__ = "exteraPlugins/1"
@@ -34,7 +33,7 @@ __category__ = ["chats", "tools"]
 
 PAGE_SIZE = 100
 # No arbitrary message-count cap: paginate until Telegram returns no older messages.
-SEND_COMMAND = ".htmlsend"
+SEND_COMMAND = ".txtsend"
 
 
 def _peer_dialog_id(peer):
@@ -63,14 +62,14 @@ class ChatTxtExportPlugin(BasePlugin):
         self.menu_item_id = self.add_menu_item(
             MenuItemData(
                 menu_type=MenuItemType.MESSAGE_CONTEXT_MENU,
-                text="Экспортировать чат в HTML",
+                text="Экспортировать чат в TXT",
                 on_click=self._on_export_menu,
                 icon="msg_file",
                 subtext="Сохранить всю доступную историю этого чата",
                 priority=5,
             )
         )
-        self.logger.info("Chat HTML Export loaded")
+        self.logger.info("Chat TXT Export loaded")
 
     def create_settings(self):
         return [
@@ -79,9 +78,9 @@ class ChatTxtExportPlugin(BasePlugin):
                 text="Как пользоваться",
                 subtext=(
                     "В исходном чате открой меню любого сообщения и выбери "
-                    "«Экспортировать чат в HTML». Плагин постранично загрузит всю доступную "
+                    "«Экспортировать чат в TXT». Плагин постранично загрузит всю доступную "
                     "историю без заданного лимита сообщений. После экспорта открой чат получателя "
-                    "и отправь команду .htmlsend. Перед отправкой появится подтверждение. "
+                    "и отправь команду .txtsend. Перед отправкой появится подтверждение. "
                     "Текст и подписи будут сохранены; сами фото, видео, файлы "
                     "и голосовые не скачиваются."
                 ),
@@ -133,7 +132,7 @@ class ChatTxtExportPlugin(BasePlugin):
         title = self._chat_title(dialog_id, account)
         self._show_confirm(
             "Экспорт переписки",
-            "Будет создан HTML-файл со всей доступной историей чата «%s». "
+            "Будет создан TXT-файл со всей доступной историей чата «%s». "
             "Медиафайлы не включаются. После экспорта файл останется на устройстве. "
             "Для отправки открой чат получателя и введи .txtsend." % title,
             "Экспортировать",
@@ -312,46 +311,35 @@ class ChatTxtExportPlugin(BasePlugin):
     def _finish_export(self):
         try:
             entries = sorted(self._collected, key=lambda item: (item[0], item[1]))
-            parts = [
-                "<!doctype html>",
-                '<html lang="ru"><head><meta charset="utf-8">',
-                "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">',
-                "<title>Экспорт чата</title>",
-                "<style>",
-                "body{font:15px/1.5 system-ui,sans-serif;background:#f3f4f6;color:#202124;margin:0;padding:24px}",
-                ".wrap{max-width:900px;margin:auto}.head{background:#fff;padding:20px;border-radius:14px;margin-bottom:16px}",
-                ".msg{background:#fff;padding:12px 16px;border-radius:12px;margin:10px 0;overflow-wrap:anywhere}",
-                ".meta{font-size:12px;color:#667085;margin-bottom:6px}.body{white-space:pre-wrap}",
-                "</style></head><body><main class=\"wrap\">',
-                '<header class="head"><h1>' + escape(self._pending_title) + '</h1>',
-                "<p>Экспортировано сообщений: %d</p>" % len(entries),
-                "<p>Вложения не скачивались; сохранены текст и подписи.</p></header>",
+            lines = [
+                "Экспорт чата: " + self._pending_title,
+                "Экспортировано сообщений: " + str(len(entries)),
+                "Примечание: вложения не скачивались; в файле сохранён только текст и подписи.",
+                "=" * 60,
             ]
             for date_value, message_id, sender, message_text in entries:
                 try:
                     date_text = datetime.fromtimestamp(date_value).strftime("%Y-%m-%d %H:%M:%S")
                 except Exception:
                     date_text = "неизвестная дата"
-                parts.append(
-                    '<article class="msg"><div class="meta">%s · %s · ID %s</div><div class="body">%s</div></article>'
-                    % (escape(date_text), escape(sender), message_id, escape(message_text))
-                )
-            parts.append("</main></body></html>")
+                lines.append("[%s] %s (ID %s):" % (date_text, sender, message_id))
+                lines.append(message_text)
+                lines.append("")
             safe_title = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in self._pending_title)
             safe_title = safe_title[:40] or "chat"
             folder = os.path.join(get_plugins_dir(), "chat_txt_export")
             ensure_dir_exists(folder)
             path = os.path.join(folder, "%s_%s.txt" % (safe_title, self._source_dialog_id))
-            write_file(path, "\n".join(parts))
+            write_file(path, "\n".join(lines))
             self._pending_file = path
             self._exporting = False
             BulletinHelper.show_success(
-                "HTML-экспорт готов: %d сообщений. Открой чат получателя и отправь .htmlsend." % len(entries)
+                "Экспорт готов: %d сообщений. Открой чат получателя и отправь .txtsend." % len(entries)
             )
         except Exception:
             self._exporting = False
             self.logger.exception("Could not write export file")
-            BulletinHelper.show_error("Не удалось сохранить HTML-файл")
+            BulletinHelper.show_error("Не удалось сохранить TXT-файл")
 
     def on_send_message_hook(self, account, params):
         try:
