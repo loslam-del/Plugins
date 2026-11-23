@@ -12,7 +12,6 @@ from base_plugin import BasePlugin, HookResult, HookStrategy, MenuItemData, Menu
 from client_utils import (
     get_last_fragment,
     get_messages_controller,
-    get_selected_account,
     send_document,
     send_request,
 )
@@ -59,7 +58,6 @@ class ChatTxtExportPlugin(BasePlugin):
         self._pending_file = ""
         self._pending_title = ""
         self._source_dialog_id = 0
-        self._account = get_selected_account()
         self.add_on_send_message_hook()
         self.menu_item_id = self.add_menu_item(
             MenuItemData(
